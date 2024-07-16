@@ -47,17 +47,17 @@ class TinySSDBase(nn.Module):
         super().__init__()
 
         # Standard convolutional layers
-        self.fire1 = ai8x.FusedConv2dBNReLU(3, 16, 3, padding=1, **kwargs)
-        self.fire2 = ai8x.FusedConv2dBNReLU(16, 16, 3, padding=1, **kwargs)
+        self.fire1 = ai8x.FusedConv2dBNReLU(3, 4, 3, padding=1, **kwargs)
+        self.fire2 = ai8x.FusedConv2dBNReLU(4, 4, 3, padding=1, **kwargs)
 
-        self.fire3 = ai8x.FusedMaxPoolConv2dBNReLU(16, 32, 3, padding=1, **kwargs)
-        self.fire4 = ai8x.FusedConv2dBNReLU(32, 32, 3, padding=1, **kwargs)
+        self.fire3 = ai8x.FusedMaxPoolConv2dBNReLU(4, 8, 3, padding=1, **kwargs)
+        self.fire4 = ai8x.FusedConv2dBNReLU(8, 8, 3, padding=1, **kwargs)
 
-        self.fire5 = ai8x.FusedMaxPoolConv2dBNReLU(32, 32, 3, padding=1,
+        self.fire5 = ai8x.FusedMaxPoolConv2dBNReLU(8, 8, 3, padding=1,
                                                    pool_size=3, **kwargs)
-        self.fire6 = ai8x.FusedConv2dBNReLU(32, 32, 3, padding=1, **kwargs)
-        self.fire7 = ai8x.FusedConv2dBNReLU(32, 32, 3, padding=1, **kwargs)
-        self.fire8 = ai8x.FusedConv2dBNReLU(32, 16, 3, padding=1, **kwargs)
+        self.fire6 = ai8x.FusedConv2dBNReLU(8, 8, 3, padding=1, **kwargs)
+        self.fire7 = ai8x.FusedConv2dBNReLU(8, 8, 3, padding=1, **kwargs)
+        self.fire8 = ai8x.FusedConv2dBNReLU(8, 4, 3, padding=1, **kwargs)
 
     def forward(self, image):
         """
@@ -103,11 +103,11 @@ class PredictionConvolutions(nn.Module):
         n_boxes = {'fire8': 3,}
 
         # 4 prior-boxes implies we use 4 different aspect ratios, etc.
-        self.loc_fire8 = ai8x.FusedConv2dBN(16, n_boxes['fire8'] * 4, kernel_size=3, padding=1,
+        self.loc_fire8 = ai8x.FusedConv2dBN(4, n_boxes['fire8'] * 4, kernel_size=3, padding=1,
                                             **kwargs)
         
         # Class prediction convolutions (predict classes in localization boxes)
-        self.cl_fire8 = ai8x.FusedConv2dBN(16, n_boxes['fire8'] * n_classes, kernel_size=3,
+        self.cl_fire8 = ai8x.FusedConv2dBN(4, n_boxes['fire8'] * n_classes, kernel_size=3,
                                            padding=1, **kwargs)
         # Initialize convolutions' parameters
         self.init_conv2d()
@@ -138,8 +138,10 @@ class PredictionConvolutions(nn.Module):
                                self.n_classes)
         
         # Concatenate in this specific order (i.e. must match the order of the prior-boxes)
-        locs = torch.cat([l_fire8], dim=1)
-        classes_scores = torch.cat([c_fire8], dim=1)
+        # locs = torch.cat([l_fire8], dim=1)
+        # classes_scores = torch.cat([c_fire8], dim=1)
+        locs = l_fire8
+        classes_scores = c_fire8
         return (locs, classes_scores)
 
 
@@ -150,7 +152,7 @@ class TinierSSD(nn.Module):
     """
     # Aspect ratios for the 4 prior boxes in each of the four feature map
     default_aspect_ratios = (
-        [0.7, 0.5, 0.3]
+        [0.7, 0.5, 0.3],
     )
 
     def __init__(self, num_classes,
@@ -193,11 +195,11 @@ class TinierSSD(nn.Module):
         :return: prior boxes in center-size zzxordinates
         """
 
-        fmap_dims = {'fire8': 20}
+        fmap_dims = {'fire8': 36,}
 
         fmaps = list(fmap_dims.keys())
 
-        obj_scales = {'fire8': 0.5}
+        obj_scales = {'fire8': 0.5,}
 
         if len(aspect_ratios) != len(fmaps):
             raise ValueError(f'aspect_ratios list should have length {len(fmaps)}')
@@ -208,7 +210,7 @@ class TinierSSD(nn.Module):
             raise ValueError(f'Each aspect_ratios list should have length \
                                {len(TinierSSD.default_aspect_ratios[0])}')
 
-        aspect_ratios = {'fire8': aspect_ratios[0]}
+        aspect_ratios = {'fire8': aspect_ratios[0],}
 
         prior_boxes = []
 

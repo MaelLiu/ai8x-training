@@ -47,17 +47,17 @@ class TinySSDBase(nn.Module):
         super().__init__()
 
         # Standard convolutional layers
-        self.fire1 = ai8x.FusedConv2dBNReLU(3, 4, 3, padding=1, **kwargs)
-        self.fire2 = ai8x.FusedConv2dBNReLU(4, 4, 3, padding=1, **kwargs)
+        self.fire1 = ai8x.FusedConv2dBNReLU(3, 8, 3, padding=1, **kwargs)
+        self.fire2 = ai8x.FusedConv2dBNReLU(8, 8, 3, padding=1, **kwargs)
 
-        self.fire3 = ai8x.FusedMaxPoolConv2dBNReLU(4, 8, 3, padding=1, **kwargs)
-        self.fire4 = ai8x.FusedConv2dBNReLU(8, 8, 3, padding=1, **kwargs)
+        self.fire3 = ai8x.FusedMaxPoolConv2dBNReLU(8, 16, 3, padding=1, **kwargs)
+        self.fire4 = ai8x.FusedConv2dBNReLU(16, 16, 3, padding=1, **kwargs)
 
-        self.fire5 = ai8x.FusedMaxPoolConv2dBNReLU(8, 8, 3, padding=1,
+        self.fire5 = ai8x.FusedMaxPoolConv2dBNReLU(16, 16, 3, padding=1,
                                                    pool_size=3, **kwargs)
-        self.fire6 = ai8x.FusedConv2dBNReLU(8, 8, 3, padding=1, **kwargs)
-        self.fire7 = ai8x.FusedConv2dBNReLU(8, 8, 3, padding=1, **kwargs)
-        self.fire8 = ai8x.FusedConv2dBNReLU(8, 4, 3, padding=1, **kwargs)
+        self.fire6 = ai8x.FusedConv2dBNReLU(16, 16, 3, padding=1, **kwargs)
+        self.fire7 = ai8x.FusedConv2dBNReLU(16, 16, 3, padding=1, **kwargs)
+        self.fire8 = ai8x.FusedConv2dBNReLU(16, 8, 3, padding=1, **kwargs)
 
     def forward(self, image):
         """
@@ -66,16 +66,25 @@ class TinySSDBase(nn.Module):
         :param image: images, a tensor of dimensions
         :return: lower-level feature maps
         """
+        print("0: ", image.size)
         out = self.fire1(image)  # (N, 32, 74, 74)
+        print("1: ", image.out)
         out = self.fire2(out)  # (N, 32, 74, 74)
+        print("2: ", image.out)
 
         out = self.fire3(out)  # (N, 64, 37, 37)
+        print("3: ", image.out)
         fire4_feats = self.fire4(out)  # (N, 64, 37, 37)
+        print("4: ", image.out)
 
         out = self.fire5(fire4_feats)  # (N, 64, 18, 18)
+        print("5: ", image.out)
         out = self.fire6(out)  # (N, 64, 18, 18)
+        print("6: ", image.out)
         out = self.fire7(out)  # (N, 128, 18, 18)
+        print("7: ", image.out)
         fire8_feats = self.fire8(out)  # (N, 32, 18, 18)
+        print("8: ", image.out)
 
         return fire4_feats, fire8_feats
 class PredictionConvolutions(nn.Module):
@@ -103,11 +112,11 @@ class PredictionConvolutions(nn.Module):
         n_boxes = {'fire8': 3,}
 
         # 4 prior-boxes implies we use 4 different aspect ratios, etc.
-        self.loc_fire8 = ai8x.FusedConv2dBN(4, n_boxes['fire8'] * 4, kernel_size=3, padding=1,
+        self.loc_fire8 = ai8x.FusedConv2dBN(8, n_boxes['fire8'] * 4, kernel_size=3, padding=1,
                                             **kwargs)
         
         # Class prediction convolutions (predict classes in localization boxes)
-        self.cl_fire8 = ai8x.FusedConv2dBN(4, n_boxes['fire8'] * n_classes, kernel_size=3,
+        self.cl_fire8 = ai8x.FusedConv2dBN(8, n_boxes['fire8'] * n_classes, kernel_size=3,
                                            padding=1, **kwargs)
         # Initialize convolutions' parameters
         self.init_conv2d()
@@ -157,7 +166,7 @@ class TinierSSD(nn.Module):
 
     def __init__(self, num_classes,
                  num_channels=3,  # pylint: disable=unused-argument
-                 dimensions=(148, 148),  # pylint: disable=unused-argument
+                 dimensions=(80, 80),  # pylint: disable=unused-argument
                  aspect_ratios=default_aspect_ratios,
                  device='cpu',
                  **kwargs):
@@ -195,7 +204,7 @@ class TinierSSD(nn.Module):
         :return: prior boxes in center-size zzxordinates
         """
 
-        fmap_dims = {'fire8': 36,}
+        fmap_dims = {'fire8': 20,}
 
         fmaps = list(fmap_dims.keys())
 

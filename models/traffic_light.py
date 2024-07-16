@@ -150,10 +150,10 @@ class PredictionConvolutions(nn.Module):
 
         self.n_classes = n_classes
 
-        n_boxes = {'fire8': 1,
-                   'fire9': 1,
-                   'fire10': 1,
-                   'conv12_2': 1}
+        n_boxes = {'fire8': 2,
+                   'fire9': 2,
+                   'fire10': 2,
+                   'conv12_2': 2}
 
         # 4 prior-boxes implies we use 4 different aspect ratios, etc.
         self.loc_fire8 = ai8x.FusedConv2dBN(16, n_boxes['fire8'] * 4, kernel_size=3, padding=1,
@@ -241,10 +241,10 @@ class TinierSSD(nn.Module):
     """
     # Aspect ratios for the 4 prior boxes in each of the four feature map
     default_aspect_ratios = (
-        [0.7],
-        [0.7],
-        [0.7],
-        [0.7]
+        [0.7, 0.5],
+        [0.7, 0.5],
+        [0.7, 0.5],
+        [0.7, 0.5]
     )
 
     def __init__(self, num_classes,
@@ -292,17 +292,17 @@ class TinierSSD(nn.Module):
         :return: prior boxes in center-size coordinates
         """
 
-        fmap_dims = {'fire8': 10,
-                     'fire9': 8,
-                     'fire10': 6,
-                     'conv12_2': 3}
+        fmap_dims = {'fire8': 5,
+                     'fire9': 10,
+                     'fire10': 10,
+                     'conv12_2': 5}
 
         fmaps = list(fmap_dims.keys())
 
         obj_scales = {'fire8': 0.35,
                       'fire9': 0.45,
                       'fire10': 0.55,
-                      'conv12_2': 0.75}
+                      'conv12_2': 0.65}
 
         if len(aspect_ratios) != len(fmaps):
             raise ValueError(f'aspect_ratios list should have length {len(fmaps)}')

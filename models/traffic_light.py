@@ -292,10 +292,10 @@ class TinierSSD(nn.Module):
         :return: prior boxes in center-size coordinates
         """
 
-        fmap_dims = {'fire8': 5,
-                     'fire9': 10,
-                     'fire10': 10,
-                     'conv12_2': 5}
+        fmap_dims = {'fire8': 18,
+                     'fire9': 9,
+                     'fire10': 4,
+                     'conv12_2': 2}
 
         fmaps = list(fmap_dims.keys())
 

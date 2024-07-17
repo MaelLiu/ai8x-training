@@ -1,0 +1,2 @@
+#!/bin/sh
+python train.py --model cone_detection --use-bias --dataset cone --data ./data/cone-spec --device MAX78000 --obj-detection --obj-detection-params parameters/obj_detection_params_traffic_light.yaml --qat-policy policies/qat_policy_traffic_light.yaml --evaluate -8 --exp-load-weights-from ../ai8x-synthesis/trained/cone_detection-qat8-q.pth.tar --save-sample 5 "$@" 

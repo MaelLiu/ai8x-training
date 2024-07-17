@@ -1,0 +1,2 @@
+#!/bin/sh
+python train.py --epochs 200 --optimizer Adam --lr 0.001 --compress policies/schedule_traffic_light.yaml --model cone_detection --use-bias --momentum 0.9 --weight-decay 5e-4 --dataset cone --data ./data/cone-spec --device MAX78000 --obj-detection --obj-detection-params parameters/obj_detection_params_traffic_light.yaml --qat-policy policies/qat_policy_traffic_light.yaml --batch-size 16 "$@" 

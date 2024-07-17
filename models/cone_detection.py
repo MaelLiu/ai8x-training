@@ -47,17 +47,23 @@ class TinySSDBase(nn.Module):
         super().__init__()
 
         # Standard convolutional layers
-        self.fire1 = ai8x.FusedConv2dBNReLU(3, 8, 3, padding=1, **kwargs)
-        self.fire2 = ai8x.FusedConv2dBNReLU(8, 8, 3, padding=1, **kwargs)
+        self.fire1 = ai8x.FusedConv2dBNReLU(3, 32, 3, padding=1, **kwargs)
+        self.fire2 = ai8x.FusedConv2dBNReLU(32, 32, 3, padding=1, **kwargs)
 
-        self.fire3 = ai8x.FusedMaxPoolConv2dBNReLU(8, 16, 3, padding=1, **kwargs)
-        self.fire4 = ai8x.FusedConv2dBNReLU(16, 16, 3, padding=1, **kwargs)
+        self.fire3 = ai8x.FusedMaxPoolConv2dBNReLU(32, 64, 3, padding=1, **kwargs)
+        self.fire4 = ai8x.FusedConv2dBNReLU(64, 64, 3, padding=1, **kwargs)
 
-        self.fire5 = ai8x.FusedMaxPoolConv2dBNReLU(16, 16, 3, padding=1,
+        self.fire5 = ai8x.FusedMaxPoolConv2dBNReLU(64, 64, 3, padding=1,
                                                    pool_size=3, **kwargs)
-        self.fire6 = ai8x.FusedConv2dBNReLU(16, 16, 3, padding=1, **kwargs)
-        self.fire7 = ai8x.FusedConv2dBNReLU(16, 16, 3, padding=1, **kwargs)
-        self.fire8 = ai8x.FusedConv2dBNReLU(16, 8, 3, padding=1, **kwargs)
+        self.fire6 = ai8x.FusedConv2dBNReLU(64, 64, 3, padding=1, **kwargs)
+        self.fire7 = ai8x.FusedConv2dBNReLU(64, 128, 3, padding=1, **kwargs)
+        self.fire8 = ai8x.FusedConv2dBNReLU(128, 32, 3, padding=1, **kwargs)
+
+        self.fire9 = ai8x.FusedMaxPoolConv2dBNReLU(32, 32, 3, padding=1,
+                                                   **kwargs)
+
+        self.fire10 = ai8x.FusedMaxPoolConv2dBNReLU(32, 32, 3, padding=1,
+                                                    pool_size=3, **kwargs)
 
     def forward(self, image):
         """
@@ -66,27 +72,62 @@ class TinySSDBase(nn.Module):
         :param image: images, a tensor of dimensions
         :return: lower-level feature maps
         """
-        print("0: ", image.size)
         out = self.fire1(image)  # (N, 32, 74, 74)
-        print("1: ", image.out)
         out = self.fire2(out)  # (N, 32, 74, 74)
-        print("2: ", image.out)
 
         out = self.fire3(out)  # (N, 64, 37, 37)
-        print("3: ", image.out)
         fire4_feats = self.fire4(out)  # (N, 64, 37, 37)
-        print("4: ", image.out)
 
         out = self.fire5(fire4_feats)  # (N, 64, 18, 18)
-        print("5: ", image.out)
         out = self.fire6(out)  # (N, 64, 18, 18)
-        print("6: ", image.out)
         out = self.fire7(out)  # (N, 128, 18, 18)
-        print("7: ", image.out)
         fire8_feats = self.fire8(out)  # (N, 32, 18, 18)
-        print("8: ", image.out)
 
-        return fire4_feats, fire8_feats
+        fire9_feats = self.fire9(fire8_feats)  # (N, 32, 9, 9)
+
+        fire10_feats = self.fire10(fire9_feats)  # (N, 32, 4, 4)
+
+        return fire4_feats, fire8_feats, fire9_feats, fire10_feats
+
+
+class AuxiliaryConvolutions(nn.Module):
+    """
+    Additional convolutions to produce higher-level feature maps.
+    """
+
+    def __init__(self, **kwargs):
+        super().__init__()
+
+        # Auxiliary/additional convolutions on top of the VGG base
+        self.conv12_1 = ai8x.FusedConv2dBNReLU(32, 16, 3, padding=1, **kwargs)
+        self.conv12_2 = ai8x.FusedMaxPoolConv2dBNReLU(16, 16, 3, padding=1, **kwargs)
+
+        self.init_conv2d()
+
+    def init_conv2d(self):
+        """
+        Initialize convolution parameters.
+        """
+        for c in self.children():
+            if isinstance(c, nn.Conv2d):
+                nn.init.xavier_uniform_(c.weight)
+                if c.bias:
+                    nn.init.constant_(c.bias, 0.)
+
+    def forward(self, fire10_feats):
+        """
+        Forward propagation.
+
+        :param conv7_feats: lower-level feature map
+        :return: higher-level feature maps
+        """
+
+        out = self.conv12_1(fire10_feats)
+        conv12_2_feats = self.conv12_2(out)
+
+        return conv12_2_feats
+
+
 class PredictionConvolutions(nn.Module):
     """
     Convolutions to predict class scores and bounding boxes using lower and higher-level feature
@@ -109,15 +150,31 @@ class PredictionConvolutions(nn.Module):
 
         self.n_classes = n_classes
 
-        n_boxes = {'fire8': 3,}
+        n_boxes = {'fire8': 3,
+                   'fire9': 3,
+                   'fire10': 3,
+                   'conv12_2': 3}
 
         # 4 prior-boxes implies we use 4 different aspect ratios, etc.
-        self.loc_fire8 = ai8x.FusedConv2dBN(8, n_boxes['fire8'] * 4, kernel_size=3, padding=1,
+        self.loc_fire8 = ai8x.FusedConv2dBN(32, n_boxes['fire8'] * 4, kernel_size=3, padding=1,
                                             **kwargs)
-        
+        self.loc_fire9 = ai8x.FusedConv2dBN(32, n_boxes['fire9'] * 4, kernel_size=3, padding=1,
+                                            **kwargs)
+        self.loc_fire10 = ai8x.FusedConv2dBN(32, n_boxes['fire10'] * 4, kernel_size=3, padding=1,
+                                             **kwargs)
+        self.loc_conv12_2 = ai8x.FusedConv2dBN(16, n_boxes['conv12_2'] * 4, kernel_size=3,
+                                               padding=1, **kwargs)
+
         # Class prediction convolutions (predict classes in localization boxes)
-        self.cl_fire8 = ai8x.FusedConv2dBN(8, n_boxes['fire8'] * n_classes, kernel_size=3,
+        self.cl_fire8 = ai8x.FusedConv2dBN(32, n_boxes['fire8'] * n_classes, kernel_size=3,
                                            padding=1, **kwargs)
+        self.cl_fire9 = ai8x.FusedConv2dBN(32, n_boxes['fire9'] * n_classes, kernel_size=3,
+                                           padding=1, **kwargs)
+        self.cl_fire10 = ai8x.FusedConv2dBN(32, n_boxes['fire10'] * n_classes, kernel_size=3,
+                                            padding=1, **kwargs)
+        self.cl_conv12_2 = ai8x.FusedConv2dBN(16, n_boxes['conv12_2'] * n_classes, kernel_size=3,
+                                              padding=1, **kwargs)
+
         # Initialize convolutions' parameters
         self.init_conv2d()
 
@@ -131,7 +188,7 @@ class PredictionConvolutions(nn.Module):
                 if c.bias:
                     nn.init.constant_(c.bias, 0.)
 
-    def forward(self, fire4_feats, fire8_feats):
+    def forward(self, fire4_feats, fire8_feats, fire9_feats, fire10_feats, conv12_2_feats):
         """
         Forward propagation.
         """
@@ -141,16 +198,39 @@ class PredictionConvolutions(nn.Module):
         l_fire8 = l_fire8.permute(0, 2, 3, 1).contiguous()
         l_fire8 = l_fire8.view(batch_size, -1, 4)
 
+        l_fire9 = self.loc_fire9(fire9_feats)
+        l_fire9 = l_fire9.permute(0, 2, 3, 1).contiguous()
+        l_fire9 = l_fire9.view(batch_size, -1, 4)
+
+        l_fire10 = self.loc_fire10(fire10_feats)
+        l_fire10 = l_fire10.permute(0, 2, 3, 1).contiguous()
+        l_fire10 = l_fire10.view(batch_size, -1, 4)
+
+        l_conv12_2 = self.loc_conv12_2(conv12_2_feats)
+        l_conv12_2 = l_conv12_2.permute(0, 2, 3, 1).contiguous()
+        l_conv12_2 = l_conv12_2.view(batch_size, -1, 4)
+
         c_fire8 = self.cl_fire8(fire8_feats)
         c_fire8 = c_fire8.permute(0, 2, 3, 1).contiguous()
         c_fire8 = c_fire8.view(batch_size, -1,
                                self.n_classes)
-        
+
+        c_fire9 = self.cl_fire9(fire9_feats)
+        c_fire9 = c_fire9.permute(0, 2, 3, 1).contiguous()
+        c_fire9 = c_fire9.view(batch_size, -1, self.n_classes)
+
+        c_fire10 = self.cl_fire10(fire10_feats)
+        c_fire10 = c_fire10.permute(0, 2, 3, 1).contiguous()
+        c_fire10 = c_fire10.view(batch_size, -1, self.n_classes)
+
+        c_conv12_2 = self.cl_conv12_2(conv12_2_feats)
+        c_conv12_2 = c_conv12_2.permute(0, 2, 3, 1).contiguous()
+        c_conv12_2 = c_conv12_2.view(batch_size, -1, self.n_classes)
+
         # Concatenate in this specific order (i.e. must match the order of the prior-boxes)
-        # locs = torch.cat([l_fire8], dim=1)
-        # classes_scores = torch.cat([c_fire8], dim=1)
-        locs = l_fire8
-        classes_scores = c_fire8
+        locs = torch.cat([l_fire8, l_fire9, l_fire10, l_conv12_2], dim=1)
+        classes_scores = torch.cat([c_fire8, c_fire9, c_fire10, c_conv12_2],
+                                   dim=1)
         return (locs, classes_scores)
 
 
@@ -161,7 +241,10 @@ class TinierSSD(nn.Module):
     """
     # Aspect ratios for the 4 prior boxes in each of the four feature map
     default_aspect_ratios = (
-        [0.7, 0.5, 0.3],
+        (0.9, 0.7, 0.5),
+        (0.9, 0.7, 0.5),
+        (0.9, 0.7, 0.5),
+        (0.9, 0.7, 0.5)
     )
 
     def __init__(self, num_classes,
@@ -175,6 +258,7 @@ class TinierSSD(nn.Module):
         self.n_classes = num_classes
 
         self.base = TinySSDBase(**kwargs)
+        self.aux_convs = AuxiliaryConvolutions(**kwargs)
         self.pred_convs = PredictionConvolutions(self.n_classes, **kwargs)
 
         # Prior boxes
@@ -189,11 +273,15 @@ class TinierSSD(nn.Module):
         :param image: images, a tensor of dimensions
         :return: Prior boxes' locations and class scores for each image
         """
-        fire4_feats, fire8_feats = self.base(image)
+        fire4_feats, fire8_feats, fire9_feats, fire10_feats = self.base(image)
+
+        # Run auxiliary convolutions (higher level feature map generators)
+        conv12_2_feats = self.aux_convs(fire10_feats)
 
         # Run prediction convolutions (predict offsets w.r.t prior-boxes and classes in each
         # resulting localization box)
-        locs, classes_scores = self.pred_convs(fire4_feats, fire8_feats)
+        locs, classes_scores = self.pred_convs(fire4_feats, fire8_feats, fire9_feats, fire10_feats,
+                                               conv12_2_feats)
 
         return locs, classes_scores
 
@@ -201,14 +289,20 @@ class TinierSSD(nn.Module):
     def create_prior_boxes(aspect_ratios=default_aspect_ratios, device='cpu'):
         """
         Create the prior (default) boxes
-        :return: prior boxes in center-size zzxordinates
+        :return: prior boxes in center-size coordinates
         """
 
-        fmap_dims = {'fire8': 19,}
+        fmap_dims = {'fire8': 19,
+                     'fire9': 9,
+                     'fire10': 4,
+                     'conv12_2': 2}
 
         fmaps = list(fmap_dims.keys())
 
-        obj_scales = {'fire8': 0.5,}
+        obj_scales = {'fire8': 0.4,
+                      'fire9': 0.5,
+                      'fire10': 0.6,
+                      'conv12_2': 0.7}
 
         if len(aspect_ratios) != len(fmaps):
             raise ValueError(f'aspect_ratios list should have length {len(fmaps)}')
@@ -219,7 +313,10 @@ class TinierSSD(nn.Module):
             raise ValueError(f'Each aspect_ratios list should have length \
                                {len(TinierSSD.default_aspect_ratios[0])}')
 
-        aspect_ratios = {'fire8': aspect_ratios[0],}
+        aspect_ratios = {'fire8': aspect_ratios[0],
+                         'fire9': aspect_ratios[1],
+                         'fire10': aspect_ratios[2],
+                         'conv12_2': aspect_ratios[3]}
 
         prior_boxes = []
 
@@ -368,8 +465,7 @@ class TinierSSD(nn.Module):
         return all_images_boxes, all_images_labels, all_images_scores  # lists of length batch_size
 
 
-
-def traffic_light(pretrained=False, **kwargs):
+def obstacle_detection(pretrained=False, **kwargs):
     """
     Constructs a Tinier SSD model
     """
@@ -379,7 +475,7 @@ def traffic_light(pretrained=False, **kwargs):
 
 models = [
     {
-        'name': 'traffic_light',
+        'name': 'cone_detection',
         'min_input': 1,
         'dim': 2,
     }

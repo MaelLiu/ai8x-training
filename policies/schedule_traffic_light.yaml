@@ -9,5 +9,5 @@ policies:
   - lr_scheduler:
       instance_name: training_lr
     starting_epoch: 0
-    ending_epoch: 200
+    ending_epoch: 100
     frequency: 1

@@ -1,43 +1,44 @@
-from PIL import Image
+from PIL import Image, ImageOps
 import cv2
 import numpy as np
 
 def adjust_saturation(image, saturation_factor):
     hsv_image = cv2.cvtColor(image, cv2.COLOR_RGB2HSV)
     hsv_image = hsv_image.astype('float32')
-    hsv_image[:,:,1] *= saturation_factor
-    hsv_image[:,:,1] = np.clip(hsv_image[:,:,1], 0, 255)
+    hsv_image[:, :, 1] *= saturation_factor
+    hsv_image[:, :, 1] = np.clip(hsv_image[:, :, 1], 0, 255)
     hsv_image = hsv_image.astype('uint8')
     return cv2.cvtColor(hsv_image, cv2.COLOR_HSV2RGB)
 
 def adjust_brightness(image, brightness_factor):
-    # Brightness factor > 1 will make the image brighter
-    # Brightness factor < 1 will make the image darker
     image = image.astype('float32')
     image *= brightness_factor
     image = np.clip(image, 0, 255)
     return image.astype('uint8')
 
-# Load the HEIC file using Pillow
-image_path = 'path_to_your_image.heic'  # Update the path to your HEIC image
+print("starting now...")
+image_path = './red.jpeg'
+target = image_path[2:-5]  # Assuming you're trying to strip the extension in a different manner
 image = Image.open(image_path)
+print("open up image")
 
-# Resize the image
-image = image.resize((80, 80), Image.ANTIALIAS)
+# Resize the image using Image.Resampling.LANCZOS
+image = image.resize((80, 80), Image.Resampling.LANCZOS)
+print("resize to 80x80")
 
-# Convert image to numpy array for OpenCV processing
 image_np = np.array(image)
+print("convert to array")
 
-# Adjust saturation (e.g., increase by 50%)
-saturated_image = adjust_saturation(image_np, 1.5)
+saturated_image = adjust_saturation(image_np, 1.6)
+print("adjust saturation")
 
-# Adjust brightness (e.g., increase brightness by 20%)
-bright_image = adjust_brightness(saturated_image, 1.2)
+bright_image = adjust_brightness(saturated_image, 1.3)
+print("adjust brightness")
 
-# Convert back to PIL image to save as PNG
 final_image = Image.fromarray(bright_image)
+print("convert back to image")
 
-# Save the image
-final_image.save('output_image.png', 'PNG')
+final_image.save(f'output_{target}.png', 'PNG')
+print("save to png")
 
-print("Image processing completed and saved as 'output_image.png'")
+print(f"Image processing completed and saved as 'output_{target}.png'")
